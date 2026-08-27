@@ -17,9 +17,14 @@ class Cfg {
     static final float[] SCALE = { 0.75f, 1f, 1.3f, 1.6f };
     static final String[] SIZE_TXT = { "Small", "Medium", "Large", "Huge" };
 
-    static final int MAX_DAYS = 7;      // days after today
-    static final int MAX_START = 23;    // hours mode: how far ahead it may start
-    static final int MAX_HOURS = 12;    // hours mode: columns
+    /**
+     * Open-Meteo's /v1/forecast gives at most 16 days, and every one of those 384 hours
+     * carries temperature, weather code and rain chance. Asking for 17 is refused with
+     * "Allowed range 0 to 16", so today plus 15 is the whole range.
+     */
+    static final int MAX_DAYS = 15;     // days after today
+    static final int MAX_START = 72;    // hours mode: how far ahead it may start
+    static final int MAX_HOURS = 24;    // hours mode: columns
 
     /** Istanbul - only a starting point, the user types their own coordinates. */
     String lat = "41.0082";

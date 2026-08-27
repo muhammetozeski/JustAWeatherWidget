@@ -182,7 +182,7 @@
             android:id="@+id/sbDays"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="7" />
+            android:max="15" />
 
         <TextView
             android:id="@+id/tvStart"
@@ -194,7 +194,7 @@
             android:id="@+id/sbStart"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="23" />
+            android:max="72" />
 
         <TextView
             android:id="@+id/tvHours"
@@ -206,7 +206,7 @@
             android:id="@+id/sbHours"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="11" />
+            android:max="23" />
 
         <CheckBox
             android:id="@+id/cbLabel"

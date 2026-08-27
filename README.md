@@ -2,7 +2,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Android-3ddc84)
 ![minSdk](https://img.shields.io/badge/minSdk-16-blue)
-![apk](https://img.shields.io/badge/APK-~29%20KB-brightgreen)
+![apk](https://img.shields.io/badge/APK-~30%20KB-brightgreen)
 ![api key](https://img.shields.io/badge/API%20key-none-success)
 ![language](https://img.shields.io/badge/language-Java-orange)
 
@@ -25,8 +25,7 @@ no ads - it shows the weather and gets out of the way.
   sign-up and no token. The settings screen says so at the bottom.
 - **Works offline.** The last forecast is stored and drawn again when the network is gone,
   marked with 📴 and the time it was fetched.
-- **Days or hours.** Either a column per day - today optional, plus up to seven days after
-  it - or a column per hour, starting at the hour you are in or any number of hours later.
+- **Days or hours.** Either a column per day - today optional, plus up to 15 days after it - or a column per hour, starting at the hour you are in or any number of hours later.
   Every column has the same shape: name, weather emoji, temperature, rain chance.
 - **Tap a column for the hour by hour view.** It lists every hour of that day with emoji,
   temperature and rain chance and lets you switch days. It reads the stored forecast, so it
@@ -106,3 +105,11 @@ defaults for the next widget instead.
 Weather data from [Open-Meteo](https://open-meteo.com) (free for non-commercial use, no key).
 Only latitude, longitude, unit and day count are sent. Nothing else leaves the phone, and the
 app stores nothing but its own settings and the last forecast.
+
+**How far ahead it goes.** `/v1/forecast` allows 16 days and refuses 17 (*"Allowed range 0 to
+16"*), so the settings stop at today plus 15. All 16 days come with full hourly detail - 384
+hours, each with a temperature, a weather code and a rain chance - in an ~12 KB response, which
+is why the whole forecast is kept as one stored blob. Longer ranges exist only on Open-Meteo's
+seasonal endpoint, and it drops everything this widget shows: daily values only, no weather
+code and no rain chance.
+

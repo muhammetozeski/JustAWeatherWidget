@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.text.format.DateFormat;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -22,6 +23,8 @@ import android.widget.RemoteViews;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.Date;
 
 /**
  * Settings screen. Opened by the launcher while the widget is being placed, and again
@@ -216,8 +219,14 @@ public class ConfigActivity extends Activity {
         tvSize.setText("Text size: " + Cfg.SIZE_TXT[Cfg.clamp(cfg.size, 0, Cfg.SIZE_TXT.length - 1)]);
         tvDays.setText("Days after today: " + cfg.days
                 + "   (" + cfg.columns() + " column" + (cfg.columns() == 1 ? "" : "s") + ")");
-        tvStart.setText(cfg.startHours == 0 ? "Start: this hour"
-                : "Start: " + cfg.startHours + " hour" + (cfg.startHours == 1 ? "" : "s") + " from now");
+        if (cfg.startHours == 0) {
+            tvStart.setText("Start: this hour");
+        } else {
+            Date from = Data.hourFromNow(cfg.startHours);
+            tvStart.setText("Start: " + cfg.startHours + " hours from now   ("
+                    + DateFormat.format("EEE", from) + " "
+                    + DateFormat.getTimeFormat(this).format(from) + ")");
+        }
         tvHours.setText("Hours shown: " + cfg.hours);
         tvEvery.setText("Update every: " + Cfg.EVERY_TXT[Cfg.clamp(cfg.every, 0, Cfg.EVERY_TXT.length - 1)]);
 
