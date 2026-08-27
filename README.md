@@ -52,7 +52,7 @@ no ads - it shows the weather and gets out of the way.
 | Piece | What it does |
 |---|---|
 | `WeatherWidget` | `AppWidgetProvider`: builds the `RemoteViews`, fills the strip, sizes the text, wires the taps, and keeps the update alarm |
-| `ConfigActivity` | Settings, opened while placing the widget and again when the widget is tapped. Draws the preview with the widget's own code, so the preview cannot drift from the real thing |
+| `ConfigActivity` | Settings, opened while placing the widget and from the button on the hour by hour screen. Draws the preview with the widget's own code, so the preview cannot drift from the real thing |
 | `DetailActivity` | Hour by hour view of one day, with a day picker |
 | `Api` | Open-Meteo request, one retry, and the weather code to emoji mapping |
 | `Data` | Reading the forecast: which index is today, which is this hour, and the values behind them |
