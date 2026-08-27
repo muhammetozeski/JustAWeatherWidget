@@ -17,7 +17,16 @@ class Api {
 
     static final String TAG = "JustAWeather";
 
-    private static final int TIMEOUT_MS = 8000;
+    /**
+     * The whole range the API offers. Asking for 17 is refused ("Allowed range 0 to 16"),
+     * and 16 days with every hour is only ~12 KB, so the widget always downloads the lot
+     * whatever it is set to show: changing the settings or opening an hour list then
+     * never needs the network, and one download serves every widget setting.
+     */
+    static final int FORECAST_DAYS = 16;
+
+    // Two tries at five seconds each stay inside the time a broadcast receiver may hold.
+    private static final int TIMEOUT_MS = 5000;
     private static final int ATTEMPTS = 2;
 
     /** Sources are UTF-8; build.gradle pins the compiler encoding so these survive. */
@@ -46,7 +55,7 @@ class Api {
                 + "&current=temperature_2m,weather_code,is_day"
                 + "&hourly=temperature_2m,weather_code,precipitation_probability"
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-                + "&forecast_days=" + c.forecastDays()
+                + "&forecast_days=" + FORECAST_DAYS
                 + "&timezone=auto"
                 + (c.fahrenheit ? "&temperature_unit=fahrenheit" : "");
 

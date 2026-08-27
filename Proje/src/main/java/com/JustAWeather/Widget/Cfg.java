@@ -113,7 +113,7 @@ class Cfg {
                 .putInt(k(id, "days"), days)
                 .putInt(k(id, "start"), startHours)
                 .putInt(k(id, "hours"), hours)
-                .commit();
+                .apply();     // apply, not commit: this runs on the UI thread
     }
 
     /** Called when a widget is removed from the home screen so nothing is left behind. */
@@ -122,7 +122,6 @@ class Cfg {
                 "round", "sl", "si", "sr", "st", "every",
                 "hourly", "today", "days", "start", "hours" };
         for (String n : names) e.remove(k(id, n));
-        Data.clear(e, id);
     }
 
     int everyMinutes() {
@@ -133,12 +132,6 @@ class Cfg {
     int columns() {
         if (hourly) return clamp(hours, 1, MAX_HOURS);
         return (showToday ? 1 : 0) + clamp(days, 0, MAX_DAYS);
-    }
-
-    /** Days the API has to return to cover those columns. */
-    int forecastDays() {
-        if (hourly) return clamp(2 + (startHours + hours) / 24, 2, 16);
-        return clamp(1 + clamp(days, 0, MAX_DAYS), 1, 16);
     }
 
     static int clamp(int v, int lo, int hi) {

@@ -34,9 +34,29 @@ android {
         release {
             shrinkResources true
             minifyEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
+    // AGP'nin APK'ya kendiliginden koydugu ekler. Hicbiri calisma zamaninda
+    // kullanilmiyor; sadece arac/market tarafi icin bilgi.
+    packagingOptions {
+        resources {
+            excludes += [
+                    'META-INF/com/android/build/gradle/app-metadata.properties',
+                    'META-INF/version-control-info.textproto',
+                    'DebugProbesKt.bin',
+                    'kotlin-tooling-metadata.json'
+            ]
+        }
+    }
+
+    // İmza blogunun icine gomulen bagimlilik listesi (Play icin). Bagimliligimiz yok.
+    dependenciesInfo {
+        includeInApk false
+        includeInBundle false
+    }
+
     namespace 'com.JustAWeather.Widget'
 }
 

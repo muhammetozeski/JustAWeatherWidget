@@ -3,6 +3,7 @@ package com.JustAWeather.Widget;
 import android.app.Activity;
 import android.appwidget.AppWidgetManager;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.format.DateFormat;
 import android.util.Log;
@@ -44,7 +45,29 @@ public class DetailActivity extends Activity {
         findViewById(R.id.dSummary).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { reload(); }
         });
+        TextView settings = (TextView) findViewById(R.id.dSettings);
+        settings.setText("⚙");
+        settings.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(DetailActivity.this, ConfigActivity.class)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId));
+            }
+        });
         paint();
+    }
+
+    /**
+     * A second tap on the widget while this screen is already up. The activity is
+     * singleTop, so that arrives here instead of starting another copy - which is what
+     * makes "tap twice to refresh" possible without slowing the first tap down.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        Bundle extras = intent.getExtras();
+        if (extras != null) day = extras.getInt(WeatherWidget.EXTRA_DAY, day);
+        reload();
     }
 
     private int slot() {
@@ -176,7 +199,7 @@ public class DetailActivity extends Activity {
                     if (widgetId > 0) WeatherWidget.render(app, widgetId);
                 } catch (Throwable t) {
                     Log.w(Api.TAG, "detail refresh failed, staying with what we have", t);
-                    Data.offline(app, slot);
+                    Store.offline(app, slot);
                 }
                 runOnUiThread(new Runnable() {
                     @Override
@@ -203,20 +226,6 @@ public class DetailActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        del(getCacheDir());
-        try {
-            del(getCodeCacheDir());       // API 21+
-        } catch (Throwable t) {
-            Log.w(Api.TAG, "no code cache directory on this Android version", t);
-        }
-    }
-
-    private static void del(java.io.File f) {
-        if (f == null) return;
-        java.io.File[] kids = f.listFiles();
-        if (kids != null) {
-            for (java.io.File k : kids) del(k);
-        }
-        f.delete();
+        Junk.sweep(this);
     }
 }

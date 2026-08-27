@@ -1,4 +1,4 @@
-﻿<#
+<#
 ======================================================================
   SmallestApk - Sablon derleme betigi  (PowerShell / pwsh)
 ----------------------------------------------------------------------
@@ -79,20 +79,48 @@ New-Item -ItemType Directory -Force $PUB | Out-Null
 # SDK yolunu bu makineye gore taze yaz (silme yok, ustune yazar)
 Set-Content -Encoding ascii (Join-Path $PROJ 'local.properties') ("sdk.dir=" + ($env:ANDROID_HOME -replace '\\','/'))
 
-Write-Host ("[1/3] Derleniyor (offline, targetSdk {0})...  (debuggable+release oldugu icin lintVitalRelease atlanir)" -f $TargetSdk) -ForegroundColor Cyan
+Write-Host ("[1/4] Derleniyor (offline, targetSdk {0})...  (debuggable+release oldugu icin lintVitalRelease atlanir)" -f $TargetSdk) -ForegroundColor Cyan
 & $GRADLE -p $PROJ clean assembleRelease -x lintVitalRelease --offline "-PtargetSdk=$TargetSdk"
 if ($LASTEXITCODE -ne 0) { throw 'Gradle derleme HATASI (yukaridaki ciktiya bak)' }
 
 $uns = Join-Path $PROJ ("build\outputs\apk\release\{0}-release-unsigned.apk" -f $ROOT_PROJECT)
 if (-not (Test-Path $uns)) { throw "Imzasiz APK bulunamadi: $uns  (ROOT_PROJECT ayari settings.gradle ile ayni mi?)" }
 
+# --- deflate post-process (RAPOR.md > 5.6): IMZADAN ONCE yeniden paketle.
+#     Gradle'in deflate'i en iyisi degil; resources.arsc STORED kalir, gerisi en yuksek
+#     deflate ile sikistirilir. AGP'nin ekledigi META-INF\...\app-metadata.properties
+#     de bu adimda dusuyor (calisma zamaninda kullanilmiyor).
+$SEVENZ = Join-Path $API 'tools\7z.exe'
+$packed = $uns
+if (Test-Path $SEVENZ) {
+    $work = Join-Path $PROJ 'build\_opt'
+    $opt  = Join-Path $PROJ 'build\opt.zip'
+    if (Test-Path $work) { Remove-Item -Recurse -Force $work }
+    if (Test-Path $opt)  { Remove-Item -Force $opt }
+    & $SEVENZ x $uns "-o$work" -y | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw '7z acma HATASI' }
+    Remove-Item -Recurse -Force (Join-Path $work 'META-INF') -ErrorAction SilentlyContinue
+    Push-Location $work
+    try {
+        & $SEVENZ a -tzip $opt 'resources.arsc' -mm=Copy | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw '7z (arsc) HATASI' }
+        & $SEVENZ a -tzip $opt '*' '-x!resources.arsc' -mm=Deflate -mx=9 -mfb=258 -mpass=15 -r | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw '7z (deflate) HATASI' }
+    } finally { Pop-Location }
+    $packed = $opt
+    $kazanc = (Get-Item $uns).Length - (Get-Item $opt).Length
+    Write-Host ("[2/4] Yeniden paketleme (7z deflate mx=9): {0} bayt kazanc" -f $kazanc) -ForegroundColor Cyan
+} else {
+    Write-Host '[2/4] 7z bulunamadi, yeniden paketleme atlandi' -ForegroundColor DarkYellow
+}
+
 $aligned = Join-Path $PROJ 'build\aligned.apk'
-Write-Host '[2/3] Hizalama (zipalign -p -f 4)...' -ForegroundColor Cyan
-& "$BT\zipalign.exe" -p -f 4 $uns $aligned
+Write-Host '[3/4] Hizalama (zipalign -p -f 4)...' -ForegroundColor Cyan
+& "$BT\zipalign.exe" -p -f 4 $packed $aligned
 if ($LASTEXITCODE -ne 0) { throw 'zipalign HATASI' }
 
 $imzaAdi = if ($useV2) { 'v1+v2+v3' } else { 'v1-only JAR' }
-Write-Host ("[3/3] Imzalama ({0}, EC anahtar)..." -f $imzaAdi) -ForegroundColor Cyan
+Write-Host ("[4/4] Imzalama ({0}, EC anahtar)..." -f $imzaAdi) -ForegroundColor Cyan
 $out = Join-Path $PUB $APK_ADI
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Force }
 & "$BT\apksigner.bat" sign --ks $KS --ks-key-alias ec --ks-pass pass:android123 --key-pass pass:android123 --min-sdk-version 18 --v1-signing-enabled true --v2-signing-enabled $v2flag --v3-signing-enabled $v2flag --v4-signing-enabled false --out $out $aligned
@@ -116,3 +144,4 @@ Write-Host 'Telefona kurmak (ADB bagli olmali):' -ForegroundColor Yellow
 Write-Host ('  {0}\android-sdk\platform-tools\adb.exe install -r "{1}"' -f $API, $out)
 Write-Host ''
 Write-Host 'KURULU boyutu dogrulamak icin README.md > "Kurulu boyutu dogrulama" bolumune bak.' -ForegroundColor Yellow
+

@@ -44,8 +44,8 @@ public class WeatherWidget extends AppWidgetProvider {
         int[] ids = ids(ctx);
         schedule(ctx);
         if (ids.length == 0) return;
-        for (int id : ids) render(ctx, id);   // the stored forecast shows immediately
-        refresh(ctx, ids, goAsync());         // then go online
+        for (int id : ids) render(ctx, id);   // the cached forecast shows immediately
+        refresh(ctx, ids, false, goAsync());  // then go online, but only if it is due
     }
 
     /** The user resized the widget: the text is sized from the widget, so redraw it. */
@@ -58,8 +58,11 @@ public class WeatherWidget extends AppWidgetProvider {
     @Override
     public void onDeleted(Context ctx, int[] ids) {
         SharedPreferences.Editor e = Cfg.prefs(ctx).edit();
-        for (int id : ids) Cfg.clear(e, id);
-        e.commit();
+        for (int id : ids) {
+            Cfg.clear(e, id);
+            Store.delete(ctx, id);
+        }
+        e.apply();
         schedule(ctx);
     }
 
@@ -76,12 +79,14 @@ public class WeatherWidget extends AppWidgetProvider {
     // ------------------------------------------------------------------ update
 
     /**
-     * Fetches in the background and redraws. A failed fetch is not an error the user
-     * has to see: the last forecast stays on screen, flagged as offline.
+     * Fetches in the background and redraws. A failed fetch is not an error the user has
+     * to see: the cached forecast stays on screen, flagged as offline.
      *
+     * @param force   true for a refresh the user asked for; false lets a forecast that is
+     *                still young stand, so repeated triggers do not spend battery on the radio
      * @param pending result of goAsync() when called from onReceive, null otherwise
      */
-    static void refresh(final Context ctx, final int[] ids,
+    static void refresh(final Context ctx, final int[] ids, final boolean force,
                         final BroadcastReceiver.PendingResult pending) {
         final Context app = ctx.getApplicationContext();
         new Thread(new Runnable() {
@@ -89,10 +94,15 @@ public class WeatherWidget extends AppWidgetProvider {
             public void run() {
                 for (int id : ids) {
                     try {
-                        Api.fetch(Cfg.load(app, id)).save(app, id);
+                        Cfg c = Cfg.load(app, id);
+                        if (!force && young(Data.load(app, id), c)) {
+                            Log.i(Api.TAG, "widget " + id + ": forecast still fresh, staying off the network");
+                            continue;
+                        }
+                        Api.fetch(c).save(app, id);
                     } catch (Throwable t) {
-                        Log.w(Api.TAG, "widget " + id + ": update failed, keeping the last forecast", t);
-                        Data.offline(app, id);
+                        Log.w(Api.TAG, "widget " + id + ": update failed, keeping the cached forecast", t);
+                        Store.offline(app, id);
                     } finally {
                         try {
                             render(app, id);
@@ -110,6 +120,12 @@ public class WeatherWidget extends AppWidgetProvider {
                 }
             }
         }).start();
+    }
+
+    /** Half an update interval old at most, and not already known to be stale. */
+    private static boolean young(Data d, Cfg c) {
+        return d.has() && !d.offline
+                && System.currentTimeMillis() - d.ts < c.everyMinutes() * 30000L;
     }
 
     static void render(Context ctx, int id) {
@@ -140,11 +156,24 @@ public class WeatherWidget extends AppWidgetProvider {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget);
         int fg = 0xFF000000 | c.fg;
         boolean known = d.has();
-        int columns = c.columns();
+        int wanted = c.columns();
 
         v.setImageViewResource(R.id.bg, c.round ? R.drawable.bg_round : R.drawable.bg_flat);
         v.setInt(R.id.bg, "setColorFilter", 0xFF000000 | c.bg);
         v.setInt(R.id.bg, "setImageAlpha", Cfg.clamp(c.alpha, 0, 255));
+
+        // Where the forecast starts. A cached forecast kept over a night offline still
+        // lines up by date; it simply reaches fewer days ahead until the next update.
+        int first = known ? (c.hourly ? d.nowIndex() : d.todayIndex()) : -1;
+        int available = c.hourly ? d.hourTotal() : d.dayCount();
+        if (!c.hourly && known && first >= 0 && !c.showToday) first++;
+        if (c.hourly && known && first >= 0) first += c.startHours;
+
+        int columns = wanted;
+        if (known) {
+            columns = first < 0 ? 0 : Math.min(wanted, available - first);
+            if (columns < 0) columns = 0;
+        }
 
         String label = c.label.trim();
         boolean hasLabel = c.showLabel && label.length() > 0;
@@ -171,10 +200,13 @@ public class WeatherWidget extends AppWidgetProvider {
         v.removeAllViews(R.id.days);
         for (int i = 0; i < columns; i++) {
             RemoteViews col = new RemoteViews(ctx.getPackageName(), R.layout.day);
-            int day = c.hourly ? fillHour(ctx, col, c, d, known, i, fg, base)
-                    : fillDay(ctx, col, c, d, known, i, fg, base);
+            int index = first + i;
+            int day = c.hourly
+                    ? fillHour(ctx, col, c, d, known, index, i, fg, base)
+                    : fillDay(col, c, d, known, index, i, fg, base);
 
-            // Tapping a column opens that day hour by hour.
+            // A column reaches the full height of the widget, so a tap anywhere down
+            // that stripe opens the day it stands for.
             Intent detail = new Intent(ctx, DetailActivity.class)
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                     .putExtra(EXTRA_DAY, day)
@@ -184,46 +216,43 @@ public class WeatherWidget extends AppWidgetProvider {
             v.addView(R.id.days, col);
         }
 
-        // Nothing selected at all: say so instead of showing an empty box.
-        text(v, R.id.empty, columns == 0 ? "Tap to choose days or hours" : null, fg,
-                Cfg.clamp(base * 0.6f, 9f, 14f));
-
-        // Tapping anywhere else opens the settings (which also refreshes).
-        Intent settings = new Intent(ctx, ConfigActivity.class)
-                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent pi = PendingIntent.getActivity(ctx, id, settings, PI_FLAGS);
-        v.setOnClickPendingIntent(R.id.bg, pi);
-        v.setOnClickPendingIntent(R.id.label, pi);
-        v.setOnClickPendingIntent(R.id.time, pi);
-        v.setOnClickPendingIntent(R.id.empty, pi);
+        // With nothing to show there has to be a way back into the settings.
+        String empty = null;
+        if (columns == 0) {
+            empty = wanted == 0 ? "Tap to choose days or hours" : "Tap to update";
+        }
+        text(v, R.id.empty, empty, fg, Cfg.clamp(base * 0.6f, 9f, 14f));
+        if (empty != null) {
+            Intent settings = new Intent(ctx, ConfigActivity.class)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            v.setOnClickPendingIntent(R.id.empty,
+                    PendingIntent.getActivity(ctx, id, settings, PI_FLAGS));
+        }
         return v;
     }
 
     /** One day column. Returns the day index it stands for. */
-    private static int fillDay(Context ctx, RemoteViews col, Cfg c, Data d, boolean known,
-                               int i, int fg, float base) {
-        int day = (c.showToday ? 0 : 1) + i;
-        boolean filled = known && day < d.dayCount();
-        Date date = filled ? d.dayDate(day) : dayFromToday(day);
+    private static int fillDay(RemoteViews col, Cfg c, Data d, boolean known,
+                               int index, int slot, int fg, float base) {
+        boolean filled = known && index >= 0 && index < d.dayCount();
+        Date date = filled ? d.dayDate(index) : dayFromToday(slot + (c.showToday ? 0 : 1));
 
         text(col, R.id.dName, DateFormat.format("EEE", date).toString(), fg, base * 0.65f);
         text(col, R.id.dIcon, c.showIcon
-                ? (filled ? Api.emoji(d.dayCode(day), true) : Api.UNKNOWN) : null, fg, base * 0.95f);
-        text(col, R.id.dTemp, filled ? degrees(d.dayMax(day)) : "--°", fg, base);
-        int rain = filled ? d.dayRain(day) : -1;
+                ? (filled ? Api.emoji(d.dayCode(index), true) : Api.UNKNOWN) : null, fg, base * 0.95f);
+        text(col, R.id.dTemp, filled ? degrees(d.dayMax(index)) : "--°", fg, base);
+        int rain = filled ? d.dayRain(index) : -1;
         text(col, R.id.dRain, c.showRain ? (rain >= 0 ? Api.DROP + rain + "%" : " ") : null,
                 fg, base * 0.65f);
-        return day;
+        return Math.max(0, index);
     }
 
     /** One hour column. Returns the day index that hour belongs to. */
     private static int fillHour(Context ctx, RemoteViews col, Cfg c, Data d, boolean known,
-                                int i, int fg, float base) {
-        int now = known ? d.nowHour() : -1;
-        int index = Math.max(0, now) + c.startHours + i;
-        boolean filled = known && now >= 0 && index < d.hourTotal();
-        Date when = filled ? d.hourDateAt(index) : Data.hourFromNow(c.startHours + i);
+                                int index, int slot, int fg, float base) {
+        boolean filled = known && index >= 0 && index < d.hourTotal();
+        Date when = filled ? d.hourDateAt(index) : Data.hourFromNow(c.startHours + slot);
 
         text(col, R.id.dName, DateFormat.getTimeFormat(ctx).format(when), fg, base * 0.65f);
         text(col, R.id.dIcon, c.showIcon
@@ -233,7 +262,7 @@ public class WeatherWidget extends AppWidgetProvider {
         int rain = filled ? d.hourRainAt(index) : -1;
         text(col, R.id.dRain, c.showRain ? (rain >= 0 ? Api.DROP + rain + "%" : " ") : null,
                 fg, base * 0.65f);
-        return index / 24;
+        return Math.max(0, index) / 24;
     }
 
     private static boolean daylight(Date when) {
@@ -267,8 +296,10 @@ public class WeatherWidget extends AppWidgetProvider {
     // ------------------------------------------------------------------ alarm
 
     /**
-     * One repeating alarm for all widgets, running at the shortest interval any of
-     * them asked for. updatePeriodMillis is left at 0 so this is the only clock.
+     * One repeating alarm for all widgets, running at the shortest interval any of them
+     * asked for. It is RTC and inexact on purpose: no wakeup, and the system is free to
+     * fold it into a batch it was going to run anyway, which is what keeps it off the
+     * battery. updatePeriodMillis is 0, so this is the only clock.
      */
     static void schedule(Context ctx) {
         int[] ids = ids(ctx);

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- One column of the forecast strip. WeatherWidget adds as many of these to
      R.id.days as the user asked for, so the count is not baked into a layout. -->
+<!-- match_parent height on purpose: the column is the tap target, so it has to reach
+     the full height of the widget rather than only the text it holds. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/dayCol"
     android:layout_width="0dp"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:layout_weight="1"
     android:gravity="center"
     android:orientation="vertical"

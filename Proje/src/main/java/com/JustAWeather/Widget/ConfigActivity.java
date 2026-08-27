@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.format.DateFormat;
@@ -41,8 +42,15 @@ public class ConfigActivity extends Activity {
 
     private int widgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
     private Cfg cfg;
+    private Data data;
+    private View previewView;
     private boolean ready;
     private boolean loading;
+
+    private final Handler ui = new Handler();
+    private final Runnable painter = new Runnable() {
+        @Override public void run() { paintNow(); }
+    };
 
     /** dp the preview box is given in config.xml, so the automatic text size matches it. */
     private static final int PREVIEW_W_DP = 240;
@@ -72,6 +80,7 @@ public class ConfigActivity extends Activity {
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId));
         }
         cfg = Cfg.load(this, widgetId);
+        data = Data.load(this, slot());   // read and parsed once, not on every repaint
 
         text(R.id.title, "🌤️ Just a Weather Widget");
         text(R.id.hLocation, "📍 Location");
@@ -184,14 +193,25 @@ public class ConfigActivity extends Activity {
         });
 
         ready = true;
-        paint();
+        paintNow();
         loadPreview();
     }
 
     // ------------------------------------------------------------------ preview
 
-    /** Reads the controls into cfg and redraws the preview with the real widget code. */
+    /**
+     * Sliders fire a stream of events while a finger is down and every one of them would
+     * otherwise rebuild the preview, which is what made this screen stutter. Repaints are
+     * collapsed to one per frame instead.
+     */
     private void paint() {
+        if (!ready) return;
+        ui.removeCallbacks(painter);
+        ui.postDelayed(painter, 32);
+    }
+
+    /** Reads the controls into cfg and redraws the preview with the real widget code. */
+    private void paintNow() {
         if (!ready) return;
         cfg.lat = lat.getText().toString();
         cfg.lon = lon.getText().toString();
@@ -233,26 +253,41 @@ public class ConfigActivity extends Activity {
         for (int i = 0; i < bgSwatch.length; i++) mark(bgSwatch[i], PALETTE[i] == cfg.bg);
         for (int i = 0; i < fgSwatch.length; i++) mark(fgSwatch[i], PALETTE[i] == cfg.fg);
 
-        Data d = Data.load(this, slot());
         note(loading ? "loading..."
-                : d.has() ? "live weather - tap to refresh, tap a column for its hours"
+                : data.has() ? "live weather - tap to refresh, tap a column for its hours"
                 : "tap to load the real weather");
 
+        RemoteViews rv = WeatherWidget.build(this, widgetId, cfg, data,
+                PREVIEW_W_DP, PREVIEW_H_DP);
         try {
-            RemoteViews rv = WeatherWidget.build(this, widgetId, cfg, d,
-                    PREVIEW_W_DP, PREVIEW_H_DP);
-            View v = rv.apply(this, preview);
-            v.setOnClickListener(null);          // the preview must not launch anything
-            v.setClickable(false);
-            preview.removeAllViews();
-            preview.addView(v);
+            if (previewView == null) {
+                previewView = rv.apply(this, preview);
+                previewView.setOnClickListener(null);   // the preview must not launch anything
+                previewView.setClickable(false);
+                preview.removeAllViews();
+                preview.addView(previewView);
+            } else {
+                // Re-running the actions on the view that is already there costs a lot
+                // less than inflating the whole thing again on every slider step.
+                rv.reapply(this, previewView);
+            }
         } catch (Throwable t) {
-            Log.e(Api.TAG, "preview could not be drawn", t);
-            preview.removeAllViews();
-            TextView fallback = new TextView(this);
-            fallback.setText("(preview unavailable)");
-            fallback.setGravity(Gravity.CENTER);
-            preview.addView(fallback);
+            Log.w(Api.TAG, "preview could not be updated in place, rebuilding it", t);
+            try {
+                previewView = rv.apply(this, preview);
+                previewView.setOnClickListener(null);
+                previewView.setClickable(false);
+                preview.removeAllViews();
+                preview.addView(previewView);
+            } catch (Throwable t2) {
+                Log.e(Api.TAG, "preview could not be drawn", t2);
+                previewView = null;
+                preview.removeAllViews();
+                TextView fallback = new TextView(this);
+                fallback.setText("(preview unavailable)");
+                fallback.setGravity(Gravity.CENTER);
+                preview.addView(fallback);
+            }
         }
     }
 
@@ -281,14 +316,11 @@ public class ConfigActivity extends Activity {
             note("enter the coordinates to load the real weather");
             return;
         }
-        final Cfg snap = new Cfg();          // what Api.fetch reads, taken now
+        // The download is always the whole 16 days, so only the place and the unit matter.
+        final Cfg snap = new Cfg();
         snap.lat = cfg.lat;
         snap.lon = cfg.lon;
         snap.fahrenheit = cfg.fahrenheit;
-        snap.hourly = cfg.hourly;
-        snap.days = cfg.days;
-        snap.startHours = cfg.startHours;
-        snap.hours = cfg.hours;
         final int slot = slot();
         final Context app = getApplicationContext();
 
@@ -302,13 +334,14 @@ public class ConfigActivity extends Activity {
                     if (widgetId > 0) WeatherWidget.render(app, widgetId);
                 } catch (Throwable t) {
                     Log.w(Api.TAG, "preview fetch failed, staying with what we have", t);
-                    Data.offline(app, slot);
+                    Store.offline(app, slot);
                 }
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
                         loading = false;
-                        paint();
+                        data = Data.load(ConfigActivity.this, slot);
+                        paintNow();
                     }
                 });
             }
@@ -361,7 +394,7 @@ public class ConfigActivity extends Activity {
     // ------------------------------------------------------------------ saving
 
     private void save() {
-        paint();
+        paintNow();
         Double la = number(cfg.lat, 90), lo = number(cfg.lon, 180);
         if (la == null || lo == null) {
             Toast.makeText(this, "Latitude must be -90 to 90 and longitude -180 to 180",
@@ -380,7 +413,7 @@ public class ConfigActivity extends Activity {
         }
         cfg.save(this, widgetId);
         WeatherWidget.render(this, widgetId);
-        WeatherWidget.refresh(this, new int[] { widgetId }, null);
+        WeatherWidget.refresh(this, new int[] { widgetId }, false, null);
         WeatherWidget.schedule(this);
         setResult(RESULT_OK, new Intent()
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId));
@@ -415,33 +448,17 @@ public class ConfigActivity extends Activity {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
-    /**
-     * Keeps Settings > Storage at ~0: the app has nothing worth caching.
-     * (see RAPOR.md > "Veri ve Onbellek")
-     */
     @Override
     protected void onStop() {
         super.onStop();
-        // Placement was backed out of: drop the reading fetched for a widget that never existed.
+        ui.removeCallbacks(painter);
+        // Placement was backed out of: drop the forecast fetched for a widget that never existed.
         if (isFinishing() && widgetId > 0 && !Cfg.stored(this, widgetId)) {
             SharedPreferences.Editor e = Cfg.prefs(this).edit();
-            Data.clear(e, widgetId);
-            e.commit();
+            Cfg.clear(e, widgetId);
+            e.apply();
+            Store.delete(this, widgetId);
         }
-        del(getCacheDir());
-        try {
-            del(getCodeCacheDir());       // API 21+
-        } catch (Throwable t) {
-            Log.w(Api.TAG, "no code cache directory on this Android version", t);
-        }
-    }
-
-    private static void del(java.io.File f) {
-        if (f == null) return;
-        java.io.File[] kids = f.listFiles();
-        if (kids != null) {
-            for (java.io.File k : kids) del(k);
-        }
-        f.delete();
+        Junk.sweep(this);
     }
 }

@@ -2,7 +2,7 @@
 
 ![platform](https://img.shields.io/badge/platform-Android-3ddc84)
 ![minSdk](https://img.shields.io/badge/minSdk-16-blue)
-![apk](https://img.shields.io/badge/APK-~30%20KB-brightgreen)
+![apk](https://img.shields.io/badge/APK-~31%20KB-brightgreen)
 ![api key](https://img.shields.io/badge/API%20key-none-success)
 ![language](https://img.shields.io/badge/language-Java-orange)
 
@@ -23,13 +23,19 @@ no ads - it shows the weather and gets out of the way.
   being placed, so it works anywhere without a location permission or a place database.
 - **No API key.** Weather comes from [Open-Meteo](https://open-meteo.com), which needs no
   sign-up and no token. The settings screen says so at the bottom.
-- **Works offline.** The last forecast is stored and drawn again when the network is gone,
-  marked with 📴 and the time it was fetched.
+- **Works offline.** The whole forecast is kept on the phone and drawn again when the
+  network is gone, marked with 📴 and the time it was fetched. A forecast kept over a night
+  offline still lines up by date; it simply reaches fewer days ahead until the next update.
+- **One download, every setting.** All 16 days and all 384 hours come down whatever the
+  widget is set to show, so changing the settings or opening an hour list never waits for
+  the network. It is deflated into the cache directory - 11.8 KB of JSON becomes 2.2 KB -
+  with `java.util.zip`, so the compression adds nothing to the APK.
 - **Days or hours.** Either a column per day - today optional, plus up to 15 days after it - or a column per hour, starting at the hour you are in or any number of hours later.
   Every column has the same shape: name, weather emoji, temperature, rain chance.
-- **Tap a column for the hour by hour view.** It lists every hour of that day with emoji,
-  temperature and rain chance and lets you switch days. It reads the stored forecast, so it
-  opens instantly and works offline too.
+- **Tap a column for the hour by hour view.** Each column is a tap target the full height
+  of the widget, so there is nothing to aim at. The screen lists every hour of that day with
+  emoji, temperature and rain chance and lets you switch days; the settings are one button
+  in its top right corner. Tapping the widget again while that screen is up refreshes.
 - **The text sizes itself.** Font sizes come from the space the launcher gives the widget
   and from how many columns have to fit, so resizing the widget grows the text with it. The
   size setting is a multiplier on top of that.
@@ -37,8 +43,9 @@ no ads - it shows the weather and gets out of the way.
   background colour, opacity, text colour, text size, rounded or square corners, °C or °F,
   which parts to show, how many columns, and how often to update. Two widgets can watch two
   different places with two different looks.
-- **Tiny.** ~30 KB APK, and roughly the same installed, because it is plain Java on the core
-  Android classes - no AndroidX, no Kotlin runtime, no support libraries.
+- **Tiny and idle.** ~31 KB APK, and roughly the same installed, because it is plain Java on
+  the core Android classes - no AndroidX, no Kotlin runtime, no support libraries. No service
+  runs, nothing holds a wake lock, and an update that is not due does not touch the radio.
 
 ## How it works
 
@@ -48,20 +55,30 @@ no ads - it shows the weather and gets out of the way.
 | `ConfigActivity` | Settings, opened while placing the widget and again when the widget is tapped. Draws the preview with the widget's own code, so the preview cannot drift from the real thing |
 | `DetailActivity` | Hour by hour view of one day, with a day picker |
 | `Api` | Open-Meteo request, one retry, and the weather code to emoji mapping |
-| `Data` | The stored forecast: the raw response plus when it was fetched and whether it is stale |
+| `Data` | Reading the forecast: which index is today, which is this hour, and the values behind them |
+| `Store` | The cache file: `[version][fetched at][offline][deflate(json)]` |
 | `Cfg` | Per widget settings; widget 0 holds the defaults a new widget starts from |
+| `Junk` | Sweeps the code cache and anything stale, leaving the forecast alone |
 
 Columns are built at runtime with `RemoteViews.addView`, one `day.xml` per column, so the
 count is a setting rather than something baked into a layout. `onAppWidgetOptionsChanged`
 redraws when the widget is resized, since the text size is derived from the widget's size.
 
-The forecast is stored as the raw Open-Meteo response, so the widget, the day details and
-the settings preview all read one copy and all of them keep working with no network.
+The forecast is stored as the raw Open-Meteo response, deflated, in the cache directory -
+not in the app's data, since it can always be downloaded again. The widget, the day details
+and the settings preview all read that one copy, and all of them keep working with no network.
 
 Updates run from a single `AlarmManager` alarm at the shortest interval any widget asked
-for (`updatePeriodMillis` is 0, so this is the only clock). Fetching happens on a background
-thread inside `goAsync()`; a failure never blanks the widget, it only flags the reading as
-offline.
+for (`updatePeriodMillis` is 0, so this is the only clock). It is `RTC` and inexact on
+purpose: it never wakes the device and the system may fold it into a batch it was going to
+run anyway. A trigger that arrives while the forecast is still young does not open a socket
+at all. Fetching happens on a background thread inside `goAsync()`, with two five second
+attempts so it stays inside the time a receiver may hold; a failure never blanks the widget,
+it only flags the forecast as offline.
+
+Double tapping the widget refreshes: `DetailActivity` is `singleTop`, so the second tap
+lands in `onNewIntent` instead of starting another copy. That way the first tap stays
+instant - there is no delay spent waiting to see whether a second one is coming.
 
 ## Building
 
@@ -85,6 +102,11 @@ things are deliberate and worth keeping:
   what keeps the installed size at roughly the APK size.
 - `-x lintVitalRelease` when assembling release, because that lint check fails on a
   debuggable release build.
+
+`Derle.ps1` also repacks the unsigned APK before signing: `resources.arsc` stays stored and
+everything else is deflated at maximum, which beats Gradle's own compression and drops the
+`app-metadata.properties` Gradle adds for tooling. `dependenciesInfo` is off for the same
+reason - there are no dependencies to describe.
 
 ```powershell
 gradle -p Proje assembleRelease -x lintVitalRelease
@@ -112,4 +134,5 @@ hours, each with a temperature, a weather code and a rain chance - in an ~12 KB 
 is why the whole forecast is kept as one stored blob. Longer ranges exist only on Open-Meteo's
 seasonal endpoint, and it drops everything this widget shows: daily values only, no weather
 code and no rain chance.
+
 
