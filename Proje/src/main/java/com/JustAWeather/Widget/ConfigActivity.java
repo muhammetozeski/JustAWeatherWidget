@@ -41,11 +41,15 @@ public class ConfigActivity extends Activity {
     private boolean ready;
     private boolean loading;
 
+    /** dp the preview box is given in config.xml, so the automatic text size matches it. */
+    private static final int PREVIEW_W_DP = 240;
+    private static final int PREVIEW_H_DP = 130;
+
     private FrameLayout preview;
     private EditText lat, lon, label;
-    private CheckBox cbF, cbRound, cbNow, cbLabel, cbIcon, cbRain, cbTime;
-    private SeekBar sbAlpha, sbSize, sbDays, sbEvery;
-    private TextView tvAlpha, tvSize, tvDays, tvEvery;
+    private CheckBox cbF, cbRound, cbHourly, cbToday, cbLabel, cbIcon, cbRain, cbTime;
+    private SeekBar sbAlpha, sbSize, sbDays, sbStart, sbHours, sbEvery;
+    private TextView tvAlpha, tvSize, tvDays, tvStart, tvHours, tvEvery;
     private View[] bgSwatch, fgSwatch;
 
     @Override
@@ -74,9 +78,10 @@ public class ConfigActivity extends Activity {
         text(R.id.hLook, "🎨 Look");
         text(R.id.lBg, "Background colour");
         text(R.id.lFg, "Text colour");
-        text(R.id.hShow, "⚙️ Options");
-        text(R.id.foot, "Weather from open-meteo.com - no account, no API key. "
-                + "The last reading is kept, so the widget still shows something without internet.");
+        text(R.id.hShow, "⚙️ What to show");
+        text(R.id.foot, "Weather data: Open-Meteo (open-meteo.com), free and with no API key "
+                + "or account. Only the coordinates are sent. The last forecast is kept on the "
+                + "phone, so the widget keeps showing it with no internet.");
 
         preview = (FrameLayout) findViewById(R.id.preview);
         lat = (EditText) findViewById(R.id.lat);
@@ -84,7 +89,8 @@ public class ConfigActivity extends Activity {
         label = (EditText) findViewById(R.id.label);
         cbF = check(R.id.cbF, "Fahrenheit (°F) instead of Celsius");
         cbRound = check(R.id.cbRound, "Rounded corners");
-        cbNow = check(R.id.cbNow, "Show the big reading for right now");
+        cbHourly = check(R.id.cbHourly, "One column per hour instead of per day");
+        cbToday = check(R.id.cbToday, "Include today");
         cbLabel = check(R.id.cbLabel, "Show the name");
         cbIcon = check(R.id.cbIcon, "Show the weather emoji");
         cbRain = check(R.id.cbRain, "Show the rain chance");
@@ -92,10 +98,14 @@ public class ConfigActivity extends Activity {
         sbAlpha = (SeekBar) findViewById(R.id.sbAlpha);
         sbSize = (SeekBar) findViewById(R.id.sbSize);
         sbDays = (SeekBar) findViewById(R.id.sbDays);
+        sbStart = (SeekBar) findViewById(R.id.sbStart);
+        sbHours = (SeekBar) findViewById(R.id.sbHours);
         sbEvery = (SeekBar) findViewById(R.id.sbEvery);
         tvAlpha = (TextView) findViewById(R.id.tvAlpha);
         tvSize = (TextView) findViewById(R.id.tvSize);
         tvDays = (TextView) findViewById(R.id.tvDays);
+        tvStart = (TextView) findViewById(R.id.tvStart);
+        tvHours = (TextView) findViewById(R.id.tvHours);
         tvEvery = (TextView) findViewById(R.id.tvEvery);
 
         lat.setText(cfg.lat);
@@ -103,14 +113,17 @@ public class ConfigActivity extends Activity {
         label.setText(cfg.label);
         cbF.setChecked(cfg.fahrenheit);
         cbRound.setChecked(cfg.round);
-        cbNow.setChecked(cfg.showNow);
+        cbHourly.setChecked(cfg.hourly);
+        cbToday.setChecked(cfg.showToday);
         cbLabel.setChecked(cfg.showLabel);
         cbIcon.setChecked(cfg.showIcon);
         cbRain.setChecked(cfg.showRain);
         cbTime.setChecked(cfg.showTime);
         sbAlpha.setProgress(cfg.alpha);
         sbSize.setProgress(cfg.size);
-        sbDays.setProgress(cfg.days - Cfg.MIN_DAYS);
+        sbDays.setProgress(cfg.days);
+        sbStart.setProgress(cfg.startHours);
+        sbHours.setProgress(cfg.hours - 1);
         sbEvery.setProgress(cfg.every);
 
         bgSwatch = swatches((LinearLayout) findViewById(R.id.bgRow), true);
@@ -130,7 +143,8 @@ public class ConfigActivity extends Activity {
         };
         cbF.setOnCheckedChangeListener(toggled);
         cbRound.setOnCheckedChangeListener(toggled);
-        cbNow.setOnCheckedChangeListener(toggled);
+        cbHourly.setOnCheckedChangeListener(toggled);
+        cbToday.setOnCheckedChangeListener(toggled);
         cbLabel.setOnCheckedChangeListener(toggled);
         cbIcon.setOnCheckedChangeListener(toggled);
         cbRain.setOnCheckedChangeListener(toggled);
@@ -144,6 +158,8 @@ public class ConfigActivity extends Activity {
         sbAlpha.setOnSeekBarChangeListener(slid);
         sbSize.setOnSeekBarChangeListener(slid);
         sbDays.setOnSeekBarChangeListener(slid);
+        sbStart.setOnSeekBarChangeListener(slid);
+        sbHours.setOnSeekBarChangeListener(slid);
         sbEvery.setOnSeekBarChangeListener(slid);
 
         Button save = (Button) findViewById(R.id.save);
@@ -179,19 +195,30 @@ public class ConfigActivity extends Activity {
         cfg.label = label.getText().toString();
         cfg.fahrenheit = cbF.isChecked();
         cfg.round = cbRound.isChecked();
-        cfg.showNow = cbNow.isChecked();
+        cfg.hourly = cbHourly.isChecked();
+        cfg.showToday = cbToday.isChecked();
         cfg.showLabel = cbLabel.isChecked();
         cfg.showIcon = cbIcon.isChecked();
         cfg.showRain = cbRain.isChecked();
         cfg.showTime = cbTime.isChecked();
         cfg.alpha = sbAlpha.getProgress();
         cfg.size = sbSize.getProgress();
-        cfg.days = sbDays.getProgress() + Cfg.MIN_DAYS;
+        cfg.days = sbDays.getProgress();
+        cfg.startHours = sbStart.getProgress();
+        cfg.hours = sbHours.getProgress() + 1;
         cfg.every = sbEvery.getProgress();
+
+        // Only the controls of the mode in use are on screen.
+        show(cfg.hourly, R.id.tvStart, R.id.sbStart, R.id.tvHours, R.id.sbHours);
+        show(!cfg.hourly, R.id.cbToday, R.id.tvDays, R.id.sbDays);
 
         tvAlpha.setText("Opacity: " + (cfg.alpha * 100 / 255) + "%");
         tvSize.setText("Text size: " + Cfg.SIZE_TXT[Cfg.clamp(cfg.size, 0, Cfg.SIZE_TXT.length - 1)]);
-        tvDays.setText("Days in the forecast strip: " + cfg.days);
+        tvDays.setText("Days after today: " + cfg.days
+                + "   (" + cfg.columns() + " column" + (cfg.columns() == 1 ? "" : "s") + ")");
+        tvStart.setText(cfg.startHours == 0 ? "Start: this hour"
+                : "Start: " + cfg.startHours + " hour" + (cfg.startHours == 1 ? "" : "s") + " from now");
+        tvHours.setText("Hours shown: " + cfg.hours);
         tvEvery.setText("Update every: " + Cfg.EVERY_TXT[Cfg.clamp(cfg.every, 0, Cfg.EVERY_TXT.length - 1)]);
 
         for (int i = 0; i < bgSwatch.length; i++) mark(bgSwatch[i], PALETTE[i] == cfg.bg);
@@ -199,11 +226,12 @@ public class ConfigActivity extends Activity {
 
         Data d = Data.load(this, slot());
         note(loading ? "loading..."
-                : d.has() ? "live weather - tap to refresh, tap a day for its hours"
+                : d.has() ? "live weather - tap to refresh, tap a column for its hours"
                 : "tap to load the real weather");
 
         try {
-            RemoteViews rv = WeatherWidget.build(this, widgetId, cfg, d);
+            RemoteViews rv = WeatherWidget.build(this, widgetId, cfg, d,
+                    PREVIEW_W_DP, PREVIEW_H_DP);
             View v = rv.apply(this, preview);
             v.setOnClickListener(null);          // the preview must not launch anything
             v.setClickable(false);
@@ -228,6 +256,10 @@ public class ConfigActivity extends Activity {
         ((TextView) findViewById(R.id.previewNote)).setText(s);
     }
 
+    private void show(boolean visible, int... ids) {
+        for (int id : ids) findViewById(id).setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+
     /**
      * Pulls the real weather for the coordinates that are typed in right now, so the
      * preview is the actual widget with actual numbers. Also serves as the refresh
@@ -240,11 +272,14 @@ public class ConfigActivity extends Activity {
             note("enter the coordinates to load the real weather");
             return;
         }
-        final Cfg snap = new Cfg();          // Api.fetch only needs these four
+        final Cfg snap = new Cfg();          // what Api.fetch reads, taken now
         snap.lat = cfg.lat;
         snap.lon = cfg.lon;
         snap.fahrenheit = cfg.fahrenheit;
+        snap.hourly = cfg.hourly;
         snap.days = cfg.days;
+        snap.startHours = cfg.startHours;
+        snap.hours = cfg.hours;
         final int slot = slot();
         final Context app = getApplicationContext();
 

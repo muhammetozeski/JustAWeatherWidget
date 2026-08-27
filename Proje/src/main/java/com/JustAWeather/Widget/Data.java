@@ -60,12 +60,15 @@ class Data {
         return num(obj("current"), "is_day", 1) != 0;
     }
 
-    /** Rain chance of the hour we are in, -1 when the API did not give one. */
-    int rainNow() {
+    /**
+     * Index of the hour we are in. The hourly arrays start at 00:00 of day 0, so the
+     * hour of "current.time" is the index; -1 when the response did not carry one.
+     */
+    int nowHour() {
         String t = str(obj("current"), "time");
         if (t.length() < 13) return -1;
         try {
-            return hourRain(0, Integer.parseInt(t.substring(11, 13)));
+            return Integer.parseInt(t.substring(11, 13));
         } catch (Throwable e) {
             Log.w(Api.TAG, "current hour could not be read from '" + t + "'", e);
             return -1;
@@ -105,31 +108,71 @@ class Data {
     // ------------------------------------------------------------------ hours
 
     int hourCount(int d) {
-        JSONArray a = arr(obj("hourly"), "time");
-        if (a == null) return 0;
-        int left = a.length() - d * HOURS_PER_DAY;
+        int left = hourTotal() - d * HOURS_PER_DAY;
         return left < 0 ? 0 : Math.min(HOURS_PER_DAY, left);
     }
 
     double hourTemp(int d, int h) {
-        return item(obj("hourly"), "temperature_2m", d * HOURS_PER_DAY + h, Double.NaN);
+        return hourTempAt(d * HOURS_PER_DAY + h);
     }
 
     int hourCode(int d, int h) {
-        return (int) item(obj("hourly"), "weather_code", d * HOURS_PER_DAY + h, -1);
+        return hourCodeAt(d * HOURS_PER_DAY + h);
     }
 
     int hourRain(int d, int h) {
-        return (int) item(obj("hourly"), "precipitation_probability", d * HOURS_PER_DAY + h, -1);
+        return hourRainAt(d * HOURS_PER_DAY + h);
     }
 
     Date hourDate(int d, int h) {
-        Date base = dayDate(d);
+        return hourDateAt(d * HOURS_PER_DAY + h);
+    }
+
+    // ---- the same hours addressed straight through, which is what the hours mode uses
+
+    int hourTotal() {
+        JSONArray a = arr(obj("hourly"), "time");
+        return a == null ? 0 : a.length();
+    }
+
+    double hourTempAt(int i) {
+        return item(obj("hourly"), "temperature_2m", i, Double.NaN);
+    }
+
+    int hourCodeAt(int i) {
+        return (int) item(obj("hourly"), "weather_code", i, -1);
+    }
+
+    int hourRainAt(int i) {
+        return (int) item(obj("hourly"), "precipitation_probability", i, -1);
+    }
+
+    /** "2026-08-27T14:00" of hour i, or that many hours from the top of this hour. */
+    Date hourDateAt(int i) {
+        JSONArray a = arr(obj("hourly"), "time");
+        String iso = a == null ? null : a.optString(i, null);
+        if (iso != null && iso.length() >= 13) {
+            try {
+                Calendar c = Calendar.getInstance();
+                c.clear();
+                c.set(Integer.parseInt(iso.substring(0, 4)),
+                        Integer.parseInt(iso.substring(5, 7)) - 1,
+                        Integer.parseInt(iso.substring(8, 10)),
+                        Integer.parseInt(iso.substring(11, 13)), 0, 0);
+                return c.getTime();
+            } catch (Throwable t) {
+                Log.w(Api.TAG, "hour '" + iso + "' could not be read", t);
+            }
+        }
+        return hourFromNow(i - Math.max(0, nowHour()));
+    }
+
+    /** Used before the first forecast arrives, so the columns still carry real labels. */
+    static Date hourFromNow(int offset) {
         Calendar c = Calendar.getInstance();
-        c.setTime(base);
-        c.set(Calendar.HOUR_OF_DAY, h);
         c.set(Calendar.MINUTE, 0);
         c.set(Calendar.SECOND, 0);
+        c.add(Calendar.HOUR_OF_DAY, offset);
         return c.getTime();
     }
 

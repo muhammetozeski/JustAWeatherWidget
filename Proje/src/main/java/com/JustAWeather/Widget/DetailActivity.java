@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.os.Bundle;
+import android.text.format.DateFormat;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -59,8 +60,9 @@ public class DetailActivity extends Activity {
 
         Date date = known ? data.dayDate(day) : new Date();
         set(R.id.dTitle, known
-                ? (day == 0 ? "Today" : day == 1 ? "Tomorrow" : Fmt.weekdayLong(date))
-                + " - " + Fmt.date(date)
+                ? (day == 0 ? "Today" : day == 1 ? "Tomorrow"
+                        : DateFormat.format("EEEE", date).toString())
+                + " - " + DateFormat.getMediumDateFormat(this).format(date)
                 : "No forecast yet");
 
         if (known) {
@@ -78,7 +80,7 @@ public class DetailActivity extends Activity {
                 : Api.PIN + " " + cfg.lat + ", " + cfg.lon;
         if (data.ts > 0) {
             place += "   " + (data.offline ? Api.OFFLINE : Api.CLOCK) + " "
-                    + Fmt.time(this, new Date(data.ts));
+                    + DateFormat.getTimeFormat(this).format(new Date(data.ts));
         }
         if (loading) place += "   " + "loading...";
         set(R.id.dPlace, place);
@@ -91,12 +93,11 @@ public class DetailActivity extends Activity {
     private void days(int dayCount) {
         LinearLayout box = (LinearLayout) findViewById(R.id.dDays);
         box.removeAllViews();
-        int shown = Math.min(dayCount, cfg.forecastDays());
-        for (int i = 0; i < shown; i++) {
+        for (int i = 0; i < dayCount; i++) {
             final int index = i;
             boolean on = i == day;
             TextView chip = new TextView(this);
-            chip.setText(Fmt.weekdayShort(data.dayDate(i))
+            chip.setText(DateFormat.format("EEE", data.dayDate(i)).toString()
                     + "  " + WeatherWidget.degrees(data.dayMax(i)));
             chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             chip.setTextColor(on ? 0xFFFFFFFF : 0xFF12263A);
@@ -133,7 +134,7 @@ public class DetailActivity extends Activity {
             boolean daylight = h >= 7 && h <= 19;
             int rain = data.hourRain(day, h);
 
-            cell(row, Fmt.time(this, data.hourDate(day, h)),
+            cell(row, DateFormat.getTimeFormat(this).format(data.hourDate(day, h)),
                     2.2f, 14, 0xFF44576A, Gravity.LEFT);
             cell(row, Api.emoji(code, daylight), 1f, 18, 0xFF12263A, Gravity.CENTER);
             cell(row, WeatherWidget.degrees(data.hourTemp(day, h)),

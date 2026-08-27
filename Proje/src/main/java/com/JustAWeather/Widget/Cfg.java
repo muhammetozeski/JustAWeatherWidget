@@ -14,12 +14,12 @@ class Cfg {
 
     static final int[] EVERY_MIN = { 15, 30, 60, 180, 360 };
     static final String[] EVERY_TXT = { "15 minutes", "30 minutes", "1 hour", "3 hours", "6 hours" };
-    static final float[] SCALE = { 0.8f, 1f, 1.25f, 1.55f };
+    static final float[] SCALE = { 0.75f, 1f, 1.3f, 1.6f };
     static final String[] SIZE_TXT = { "Small", "Medium", "Large", "Huge" };
 
-    /** Open-Meteo gives at most 16 days; 7 is all that fits in a widget strip. */
-    static final int MIN_DAYS = 3;
-    static final int MAX_DAYS = 7;
+    static final int MAX_DAYS = 7;      // days after today
+    static final int MAX_START = 23;    // hours mode: how far ahead it may start
+    static final int MAX_HOURS = 12;    // hours mode: columns
 
     /** Istanbul - only a starting point, the user types their own coordinates. */
     String lat = "41.0082";
@@ -29,15 +29,20 @@ class Cfg {
     int bg = 0x1A2330;        // RGB only, alpha is kept separately
     int alpha = 220;          // 0..255
     int fg = 0xFFFFFF;        // RGB only
-    int size = 1;             // index into SCALE
+    int size = 1;             // index into SCALE, applied on top of the automatic size
     boolean round = true;
     boolean showLabel = true;
     boolean showIcon = true;
     boolean showRain = true;
     boolean showTime = true;
-    boolean showNow = true;   // the big current temperature block
-    int days = 3;             // days in the forecast strip, 0 hides it
     int every = 2;            // index into EVERY_MIN
+
+    /** false: a column per day. true: a column per hour. */
+    boolean hourly = false;
+    boolean showToday = true; // days mode: is today one of the columns
+    int days = 2;             // days mode: days AFTER today, so 0 means today alone
+    int startHours = 0;       // hours mode: 0 starts at the hour we are in
+    int hours = 4;            // hours mode: how many columns
 
     static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -73,9 +78,12 @@ class Cfg {
         o.showIcon = p.getBoolean(k(id, "si"), d.showIcon);
         o.showRain = p.getBoolean(k(id, "sr"), d.showRain);
         o.showTime = p.getBoolean(k(id, "st"), d.showTime);
-        o.showNow = p.getBoolean(k(id, "sn"), d.showNow);
-        o.days = clamp(p.getInt(k(id, "days"), d.days), MIN_DAYS, MAX_DAYS);
         o.every = clamp(p.getInt(k(id, "every"), d.every), 0, EVERY_MIN.length - 1);
+        o.hourly = p.getBoolean(k(id, "hourly"), d.hourly);
+        o.showToday = p.getBoolean(k(id, "today"), d.showToday);
+        o.days = clamp(p.getInt(k(id, "days"), d.days), 0, MAX_DAYS);
+        o.startHours = clamp(p.getInt(k(id, "start"), d.startHours), 0, MAX_START);
+        o.hours = clamp(p.getInt(k(id, "hours"), d.hours), 1, MAX_HOURS);
         return o;
     }
 
@@ -94,16 +102,20 @@ class Cfg {
                 .putBoolean(k(id, "si"), showIcon)
                 .putBoolean(k(id, "sr"), showRain)
                 .putBoolean(k(id, "st"), showTime)
-                .putBoolean(k(id, "sn"), showNow)
-                .putInt(k(id, "days"), days)
                 .putInt(k(id, "every"), every)
+                .putBoolean(k(id, "hourly"), hourly)
+                .putBoolean(k(id, "today"), showToday)
+                .putInt(k(id, "days"), days)
+                .putInt(k(id, "start"), startHours)
+                .putInt(k(id, "hours"), hours)
                 .commit();
     }
 
     /** Called when a widget is removed from the home screen so nothing is left behind. */
     static void clear(SharedPreferences.Editor e, int id) {
         String[] names = { "lat", "lon", "label", "f", "bg", "alpha", "fg", "size",
-                "round", "sl", "si", "sr", "st", "sn", "days", "every" };
+                "round", "sl", "si", "sr", "st", "every",
+                "hourly", "today", "days", "start", "hours" };
         for (String n : names) e.remove(k(id, n));
         Data.clear(e, id);
     }
@@ -112,12 +124,23 @@ class Cfg {
         return EVERY_MIN[clamp(every, 0, EVERY_MIN.length - 1)];
     }
 
-    /** Days to ask the API for: today plus the strip, whatever the strip is set to. */
+    /** How many columns the strip has with the current settings. */
+    int columns() {
+        if (hourly) return clamp(hours, 1, MAX_HOURS);
+        return (showToday ? 1 : 0) + clamp(days, 0, MAX_DAYS);
+    }
+
+    /** Days the API has to return to cover those columns. */
     int forecastDays() {
-        return clamp(days, MIN_DAYS, MAX_DAYS);
+        if (hourly) return clamp(2 + (startHours + hours) / 24, 2, 16);
+        return clamp(1 + clamp(days, 0, MAX_DAYS), 1, 16);
     }
 
     static int clamp(int v, int lo, int hi) {
+        return v < lo ? lo : (v > hi ? hi : v);
+    }
+
+    static float clamp(float v, float lo, float hi) {
         return v < lo ? lo : (v > hi ? hi : v);
     }
 }

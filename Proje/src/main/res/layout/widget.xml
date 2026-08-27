@@ -18,68 +18,39 @@
         android:orientation="vertical"
         android:padding="6dp">
 
-        <!-- Current conditions. Tapping this block opens the settings. -->
-        <LinearLayout
-            android:id="@+id/now"
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/label"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="vertical">
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:singleLine="true"
-                android:textColor="#FFFFFFFF"
-                android:textSize="12sp" />
+        <TextView
+            android:id="@+id/empty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/icon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingRight="4dp"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="26sp" />
-
-                <TextView
-                    android:id="@+id/temp"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="26sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/rain"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:paddingLeft="8dp"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="14sp" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFFFF"
-                android:textSize="10sp" />
-        </LinearLayout>
-
-        <!-- Forecast strip: one day.xml per day, filled in from code. -->
+        <!-- The strip: one day.xml per day or per hour, filled in from code. -->
         <LinearLayout
             android:id="@+id/days"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
             android:orientation="horizontal" />
+
+        <TextView
+            android:id="@+id/time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:textColor="#FFFFFFFF"
+            android:textSize="10sp" />
     </LinearLayout>
 </FrameLayout>

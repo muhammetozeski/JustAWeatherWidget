@@ -22,31 +22,39 @@ no ads - it shows the weather and gets out of the way.
 - **Coordinates you type in.** Latitude and longitude are entered while the widget is
   being placed, so it works anywhere without a location permission or a place database.
 - **No API key.** Weather comes from [Open-Meteo](https://open-meteo.com), which needs no
-  sign-up and no token.
+  sign-up and no token. The settings screen says so at the bottom.
 - **Works offline.** The last forecast is stored and drawn again when the network is gone,
   marked with 📴 and the time it was fetched.
-- **3 to 7 day strip.** Each day shows the weather emoji, the day's high and the rain chance.
-- **Tap a day for its hours.** The detail screen lists every hour of that day with emoji,
-  temperature and rain chance, and lets you switch between days. It reads the stored
-  forecast, so it opens instantly and also works offline.
+- **Days or hours.** Either a column per day - today optional, plus up to seven days after
+  it - or a column per hour, starting at the hour you are in or any number of hours later.
+  Every column has the same shape: name, weather emoji, temperature, rain chance.
+- **Tap a column for the hour by hour view.** It lists every hour of that day with emoji,
+  temperature and rain chance and lets you switch days. It reads the stored forecast, so it
+  opens instantly and works offline too.
+- **The text sizes itself.** Font sizes come from the space the launcher gives the widget
+  and from how many columns have to fit, so resizing the widget grows the text with it. The
+  size setting is a multiplier on top of that.
 - **Everything is configurable per widget**, with a live preview that is the real widget:
   background colour, opacity, text colour, text size, rounded or square corners, °C or °F,
-  which parts to show, how many days, and how often to update. Two widgets can watch two
+  which parts to show, how many columns, and how often to update. Two widgets can watch two
   different places with two different looks.
-- **Tiny.** ~29 KB APK, and roughly the same installed, because it is plain Java on the core
+- **Tiny.** ~30 KB APK, and roughly the same installed, because it is plain Java on the core
   Android classes - no AndroidX, no Kotlin runtime, no support libraries.
 
 ## How it works
 
 | Piece | What it does |
 |---|---|
-| `WeatherWidget` | `AppWidgetProvider`: builds the `RemoteViews`, fills the day strip, wires the taps, and keeps the update alarm |
-| `ConfigActivity` | Settings, opened while placing the widget and again whenever the current conditions are tapped. Draws the preview with the widget's own code, so the preview cannot drift from the real thing |
+| `WeatherWidget` | `AppWidgetProvider`: builds the `RemoteViews`, fills the strip, sizes the text, wires the taps, and keeps the update alarm |
+| `ConfigActivity` | Settings, opened while placing the widget and again when the widget is tapped. Draws the preview with the widget's own code, so the preview cannot drift from the real thing |
 | `DetailActivity` | Hour by hour view of one day, with a day picker |
 | `Api` | Open-Meteo request, one retry, and the weather code to emoji mapping |
 | `Data` | The stored forecast: the raw response plus when it was fetched and whether it is stale |
 | `Cfg` | Per widget settings; widget 0 holds the defaults a new widget starts from |
-| `Fmt` | English day and month names whatever the phone's language is, clock in the phone's 12/24 hour setting |
+
+Columns are built at runtime with `RemoteViews.addView`, one `day.xml` per column, so the
+count is a setting rather than something baked into a layout. `onAppWidgetOptionsChanged`
+redraws when the widget is resized, since the text size is derived from the widget's size.
 
 The forecast is stored as the raw Open-Meteo response, so the widget, the day details and
 the settings preview all read one copy and all of them keep working with no network.

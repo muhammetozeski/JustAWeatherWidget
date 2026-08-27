@@ -9,6 +9,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.text.format.DateFormat;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
@@ -21,6 +23,10 @@ public class WeatherWidget extends AppWidgetProvider {
 
     static final String ACTION_TICK = "com.JustAWeather.Widget.TICK";
     static final String EXTRA_DAY = "day";
+
+    /** Used when the host has not told us how big the widget is yet. */
+    private static final int FALLBACK_W_DP = 180;
+    private static final int FALLBACK_H_DP = 110;
 
     // FLAG_IMMUTABLE is a compile time constant (API 23+); older systems ignore the extra bit.
     private static final int PI_FLAGS =
@@ -40,6 +46,13 @@ public class WeatherWidget extends AppWidgetProvider {
         if (ids.length == 0) return;
         for (int id : ids) render(ctx, id);   // the stored forecast shows immediately
         refresh(ctx, ids, goAsync());         // then go online
+    }
+
+    /** The user resized the widget: the text is sized from the widget, so redraw it. */
+    @Override
+    public void onAppWidgetOptionsChanged(Context ctx, AppWidgetManager m, int id, Bundle options) {
+        super.onAppWidgetOptionsChanged(ctx, m, id, options);
+        render(ctx, id);
     }
 
     @Override
@@ -100,75 +113,134 @@ public class WeatherWidget extends AppWidgetProvider {
     }
 
     static void render(Context ctx, int id) {
-        AppWidgetManager.getInstance(ctx).updateAppWidget(
-                id, build(ctx, id, Cfg.load(ctx, id), Data.load(ctx, id)));
+        AppWidgetManager m = AppWidgetManager.getInstance(ctx);
+        int w = FALLBACK_W_DP, h = FALLBACK_H_DP;
+        try {
+            Bundle o = m.getAppWidgetOptions(id);       // API 16+
+            if (o != null) {
+                int ow = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+                int oh = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+                if (ow > 0) w = ow;
+                if (oh > 0) h = oh;
+            }
+        } catch (Throwable t) {
+            Log.w(Api.TAG, "widget " + id + " size unknown, using the default", t);
+        }
+        m.updateAppWidget(id, build(ctx, id, Cfg.load(ctx, id), Data.load(ctx, id), w, h));
     }
 
     // ------------------------------------------------------------------ drawing
 
-    static RemoteViews build(Context ctx, int id, Cfg c, Data d) {
+    /**
+     * @param wDp width the host gives the widget, @param hDp its height. The text is
+     *            sized from those and from how many columns have to fit, so the widget
+     *            grows with the space it is given instead of staying at one size.
+     */
+    static RemoteViews build(Context ctx, int id, Cfg c, Data d, int wDp, int hDp) {
         RemoteViews v = new RemoteViews(ctx.getPackageName(), R.layout.widget);
-        float s = Cfg.SCALE[Cfg.clamp(c.size, 0, Cfg.SCALE.length - 1)];
         int fg = 0xFF000000 | c.fg;
         boolean known = d.has();
+        int columns = c.columns();
 
         v.setImageViewResource(R.id.bg, c.round ? R.drawable.bg_round : R.drawable.bg_flat);
         v.setInt(R.id.bg, "setColorFilter", 0xFF000000 | c.bg);
         v.setInt(R.id.bg, "setImageAlpha", Cfg.clamp(c.alpha, 0, 255));
 
-        // ---- current conditions
-        v.setViewVisibility(R.id.now, c.showNow ? View.VISIBLE : View.GONE);
         String label = c.label.trim();
-        text(v, R.id.label, c.showLabel && label.length() > 0 ? Api.PIN + " " + label : null, fg, 12f * s);
-        text(v, R.id.icon, c.showIcon
-                ? (known ? Api.emoji(d.code(), d.daylight()) : Api.UNKNOWN) : null, fg, 26f * s);
-        text(v, R.id.temp, known ? degrees(d.temp()) : "--°", fg, 26f * s);
+        boolean hasLabel = c.showLabel && label.length() > 0;
+        boolean hasTime = c.showTime && d.ts > 0;
 
-        int rainNow = known ? d.rainNow() : -1;
-        text(v, R.id.rain, c.showRain && rainNow >= 0 ? Api.DROP + " " + rainNow + "%" : null, fg, 14f * s);
+        // ---- automatic size: the column has to fit sideways and the lines vertically
+        float colW = Math.max(12f, (wDp - 14f) / Math.max(1, columns));
+        float rows = 1f                              // the temperature
+                + (c.showIcon ? 0.95f : 0f)          // the emoji
+                + 0.65f                              // the day or hour name
+                + (c.showRain ? 0.65f : 0f);         // the rain chance
+        float freeH = hDp - 12f - (hasLabel ? 16f : 0f) - (hasTime ? 14f : 0f);
+        float base = Math.min(colW * 0.42f, freeH / Math.max(1.6f, rows + 0.5f));
+        base = Cfg.clamp(base * Cfg.SCALE[Cfg.clamp(c.size, 0, Cfg.SCALE.length - 1)], 8f, 40f);
 
-        String when = null;
-        if (c.showTime && d.ts > 0) {
-            when = (d.offline ? Api.OFFLINE : Api.CLOCK) + " " + Fmt.time(ctx, new Date(d.ts));
-        }
-        text(v, R.id.time, when, fg, 10f * s);
+        text(v, R.id.label, hasLabel ? Api.PIN + " " + label : null, fg,
+                Cfg.clamp(base * 0.62f, 8f, 15f));
+        text(v, R.id.time, hasTime
+                ? (d.offline ? Api.OFFLINE : Api.CLOCK) + " "
+                        + DateFormat.getTimeFormat(ctx).format(new Date(d.ts))
+                : null, fg, Cfg.clamp(base * 0.55f, 7f, 13f));
 
-        // ---- forecast strip, one column per day
+        // ---- the strip: same shape for every column, today included
         v.removeAllViews(R.id.days);
-        int wanted = c.forecastDays();
-        int have = known ? d.dayCount() : 0;
-        for (int i = 0; i < wanted; i++) {
+        for (int i = 0; i < columns; i++) {
             RemoteViews col = new RemoteViews(ctx.getPackageName(), R.layout.day);
-            boolean filled = i < have;
-            Date date = filled ? d.dayDate(i) : dayFromToday(i);
+            int day = c.hourly ? fillHour(ctx, col, c, d, known, i, fg, base)
+                    : fillDay(ctx, col, c, d, known, i, fg, base);
 
-            text(col, R.id.dName, Fmt.weekdayShort(date), fg, 10f * s);
-            text(col, R.id.dIcon, filled ? Api.emoji(d.dayCode(i), true) : Api.UNKNOWN, fg, 14f * s);
-            text(col, R.id.dTemp, filled ? degrees(d.dayMax(i)) : "--°", fg, 11f * s);
-
-            int rain = filled ? d.dayRain(i) : -1;
-            text(col, R.id.dRain, rain >= 0 ? Api.DROP + rain + "%" : " ", fg, 10f * s);
-
-            // Tapping a day opens its hour by hour detail.
-            Intent day = new Intent(ctx, DetailActivity.class)
+            // Tapping a column opens that day hour by hour.
+            Intent detail = new Intent(ctx, DetailActivity.class)
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                    .putExtra(EXTRA_DAY, i)
+                    .putExtra(EXTRA_DAY, day)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             col.setOnClickPendingIntent(R.id.dayCol,
-                    PendingIntent.getActivity(ctx, id * 100 + i, day, PI_FLAGS));
-
+                    PendingIntent.getActivity(ctx, id * 100 + i, detail, PI_FLAGS));
             v.addView(R.id.days, col);
         }
-        v.setViewVisibility(R.id.days, wanted > 0 ? View.VISIBLE : View.GONE);
 
-        // Tapping the current conditions opens the settings (which also refreshes).
+        // Nothing selected at all: say so instead of showing an empty box.
+        text(v, R.id.empty, columns == 0 ? "Tap to choose days or hours" : null, fg,
+                Cfg.clamp(base * 0.6f, 9f, 14f));
+
+        // Tapping anywhere else opens the settings (which also refreshes).
         Intent settings = new Intent(ctx, ConfigActivity.class)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent pi = PendingIntent.getActivity(ctx, id, settings, PI_FLAGS);
-        v.setOnClickPendingIntent(R.id.now, pi);
-        v.setOnClickPendingIntent(R.id.bg, pi);     // the empty area around the text
+        v.setOnClickPendingIntent(R.id.bg, pi);
+        v.setOnClickPendingIntent(R.id.label, pi);
+        v.setOnClickPendingIntent(R.id.time, pi);
+        v.setOnClickPendingIntent(R.id.empty, pi);
         return v;
+    }
+
+    /** One day column. Returns the day index it stands for. */
+    private static int fillDay(Context ctx, RemoteViews col, Cfg c, Data d, boolean known,
+                               int i, int fg, float base) {
+        int day = (c.showToday ? 0 : 1) + i;
+        boolean filled = known && day < d.dayCount();
+        Date date = filled ? d.dayDate(day) : dayFromToday(day);
+
+        text(col, R.id.dName, DateFormat.format("EEE", date).toString(), fg, base * 0.65f);
+        text(col, R.id.dIcon, c.showIcon
+                ? (filled ? Api.emoji(d.dayCode(day), true) : Api.UNKNOWN) : null, fg, base * 0.95f);
+        text(col, R.id.dTemp, filled ? degrees(d.dayMax(day)) : "--°", fg, base);
+        int rain = filled ? d.dayRain(day) : -1;
+        text(col, R.id.dRain, c.showRain ? (rain >= 0 ? Api.DROP + rain + "%" : " ") : null,
+                fg, base * 0.65f);
+        return day;
+    }
+
+    /** One hour column. Returns the day index that hour belongs to. */
+    private static int fillHour(Context ctx, RemoteViews col, Cfg c, Data d, boolean known,
+                                int i, int fg, float base) {
+        int now = known ? d.nowHour() : -1;
+        int index = Math.max(0, now) + c.startHours + i;
+        boolean filled = known && now >= 0 && index < d.hourTotal();
+        Date when = filled ? d.hourDateAt(index) : Data.hourFromNow(c.startHours + i);
+
+        text(col, R.id.dName, DateFormat.getTimeFormat(ctx).format(when), fg, base * 0.65f);
+        text(col, R.id.dIcon, c.showIcon
+                ? (filled ? Api.emoji(d.hourCodeAt(index), daylight(when)) : Api.UNKNOWN)
+                : null, fg, base * 0.95f);
+        text(col, R.id.dTemp, filled ? degrees(d.hourTempAt(index)) : "--°", fg, base);
+        int rain = filled ? d.hourRainAt(index) : -1;
+        text(col, R.id.dRain, c.showRain ? (rain >= 0 ? Api.DROP + rain + "%" : " ") : null,
+                fg, base * 0.65f);
+        return index / 24;
+    }
+
+    private static boolean daylight(Date when) {
+        Calendar c = Calendar.getInstance();
+        c.setTime(when);
+        int h = c.get(Calendar.HOUR_OF_DAY);
+        return h >= 7 && h <= 19;
     }
 
     static String degrees(double t) {
