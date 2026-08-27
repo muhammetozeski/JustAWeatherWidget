@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="head">
+        <item name="android:textColor">#FF1B5E8C</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:layout_marginTop">18dp</item>
+    </style>
+    <style name="lbl">
+        <item name="android:textColor">#FF44576A</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:layout_marginTop">10dp</item>
+    </style>
+    <style name="chk">
+        <item name="android:textColor">#FF12263A</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+</resources>

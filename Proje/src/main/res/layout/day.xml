@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One column of the forecast strip. WeatherWidget adds as many of these to
+     R.id.days as the user asked for, so the count is not baked into a layout. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dayCol"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:paddingLeft="1dp"
+    android:paddingRight="1dp">
+
+    <TextView
+        android:id="@+id/dName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="10sp" />
+
+    <TextView
+        android:id="@+id/dIcon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/dTemp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/dRain"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:textColor="#FFFFFFFF"
+        android:textSize="10sp" />
+</LinearLayout>

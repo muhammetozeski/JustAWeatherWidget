@@ -1,0 +1,19 @@
+# build output
+Proje/build/
+Proje/.gradle/
+Proje/local.properties
+Publish/
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# SmallestApk template notes - they belong to the template, not to this app
+Ek Notlar.txt
+ekran görüntüsü alma adımları.txt
+GUNCELLEME_REHBERI.md
+IKON_REHBERI.md
+Iletisim-Kurallari.md
+RAPOR.md

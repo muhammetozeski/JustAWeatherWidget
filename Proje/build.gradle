@@ -1,0 +1,51 @@
+apply plugin: 'com.android.application'
+
+buildscript {
+    repositories {
+        mavenCentral()
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.0.2'
+    }
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+        google()
+    }
+}
+
+android {
+    compileSdkVersion 33
+    defaultConfig {
+        applicationId "com.JustAWeather.Widget"
+        // 16 = RemoteViews.setTextViewTextSize / ImageView.setImageAlpha
+        minSdkVersion 16
+        // Derle.ps1'den gelir (-PtargetSdk). Gelmezse 29:
+        // targetSdk 30+ olan APK'yi Android 11+ v2 imza olmadan KURMAZ; 29'da
+        // v1-only imza yeter ve APK ~8 KB kucuk kalir. (bkz. RAPOR.md > "Imza")
+        targetSdkVersion (project.hasProperty('targetSdk') ? project.targetSdk.toInteger() : 29)
+        versionCode 1
+        versionName "1.0.0"
+    }
+    buildTypes {
+        release {
+            shrinkResources true
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+    namespace 'com.JustAWeather.Widget'
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+}
+
+// Kaynaklarda emoji karakterleri var; javac'in platform varsayilan encoding'ine
+// (Turkce Windows'ta cp1254) dusmesi onlari bozar.
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}

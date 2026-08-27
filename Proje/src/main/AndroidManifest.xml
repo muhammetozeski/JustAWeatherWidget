@@ -1,0 +1,62 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.JustAWeather.Widget">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      Kucuk KURULU boyutun anahtarlari:
+      - debuggable="true"        -> sistem dex2oat ile odex/vdex/art URETMEZ (run-from-apk),
+                                    kurulu boyut ~ base.apk kadar kalir. (Release lint'i patlar;
+                                    derlemede -x lintVitalRelease ile gecilir.)
+      - vmSafeMode="true"        -> AOT optimizasyonunu kapatir.
+      - hardwareAccelerated="false" -> GPU shader onbellek dosyalari olusmaz.
+      - allowBackup="false"      -> yedekleme veri klasoru ayrilmaz.
+    -->
+    <application
+        android:debuggable="true"
+        android:allowBackup="false"
+        android:hardwareAccelerated="false"
+        android:vmSafeMode="true"
+        android:icon="@drawable/icon"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+
+        <receiver
+            android:name=".WeatherWidget"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
+
+        <activity
+            android:name=".ConfigActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <!-- Widget ana ekrana konurken acilan ayar ekrani. -->
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Ayni ekran uygulama cekmecesinden de acilir: oradaki kayit
+                 "bir sonraki widget'in varsayilanlari" olur. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Widget'taki bir gune dokununca acilan saatlik detay. Yalnizca kendi
+             PendingIntent'imiz baslatir, disari acik olmasi gerekmez. -->
+        <activity
+            android:name=".DetailActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+    </application>
+</manifest>
